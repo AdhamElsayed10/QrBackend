@@ -53,7 +53,7 @@ function getPublicBaseUrl(req) {
     return `${proto}://${host}`;
   }
 
-  
+
   // 5. Safe production fallback (used in local dev or fallback so QR codes NEVER have localhost)
   return (process.env.DEFAULT_PRODUCTION_URL || 'https://ejaar.fujmen.com').replace(/\/+$/, '');
 }
