@@ -139,6 +139,64 @@ const QARTOUBI_QR_PLACEMENT = {
   pageSelection: 'first',
 };
 
+// Contract Profile for #000000.pdf (Qasai Khalil Khamis Alqartoubi)
+const QASAI_CONTRACT_DATA = {
+  isFujairahContract: true,
+  applicationDetails: {
+    fmRef: 'REN99837815',
+    applicationType: 'Renew Contract',
+    status: 'Certificate Attested & Issued',
+  },
+  buildingDetails: {
+    buildingNo: 'PROPH10911122',
+    name: 'Residential Building',
+    usage: 'Residential',
+    block: 'H',
+    plotColon: '105',
+    location: 'MARBAH',
+  },
+  unitDetails: {
+    number: '1',
+    propertyNumber: 'PROPH10911122',
+    type: 'Building',
+    name: '102',
+    subType: '3 BHK',
+    usage: 'Family Residence',
+    etihadWeAccountNo: '20000304603',
+  },
+  ownerDetails: {
+    name: 'HAMED SALIM SAID ALSHAMSI',
+    mobile: '05*****248',
+    mobileRaw: '0564204248',
+    idn: '784*****611-3',
+    idnRaw: '784-1989-1254611-3',
+  },
+  tenantDetails: {
+    name: 'QASAI KHALIL KHAMIS ALQARTOUBI',
+    mobile: '05*****434',
+    mobileRaw: '0505034434',
+    idn: '784*****589-1',
+    idnRaw: '784-2005-1259589-1',
+  },
+  contractDetails: {
+    contractNo: 'RENT99837815',
+    startDate: '01/10/2026',
+    amount: '31000.00',
+    endDate: '30/09/2027',
+    termsAndConditions: '6 payments',
+    status: 'Certificate Attested & Issued',
+  },
+  footer: '2024 (c) EJAAR',
+};
+
+const QASAI_QR_PLACEMENT = {
+  position: 'custom',
+  customX: 476,
+  customY: 201.5,
+  qrSize: 65,
+  pageSelection: 'first',
+};
+
 function calculateFujairahQRPlacement(width, height) {
   const qrSize = 65;
   if (Math.abs(width - 612) < 20 && Math.abs(height - 792) < 20) {
@@ -197,6 +255,24 @@ async function extractContractDataFromPDF(pdfInput) {
         isFujairahContract: true,
         contractData: OSAMA_CONTRACT_DATA,
         qrPlacement: OSAMA_QR_PLACEMENT,
+      };
+    }
+
+    // Match #000000 (Qasai Khalil Khamis Alqartoubi) Contract
+    const isQasai = normalizedPath.includes('#000000') ||
+                    normalizedPath.includes('000000') ||
+                    normalizedPath.includes('qasai') ||
+                    normalizedPath.includes('قصي') ||
+                    rawBufferStr.includes('Microsoft: Print To PDF') ||
+                    rawBufferStr.includes('D:20261019190020');
+
+    if (isQasai) {
+      console.log('[Extractor] Matched static profile: QASAI ALQARTOUBI (#000000) CONTRACT');
+      return {
+        isDataFilled: true,
+        isFujairahContract: true,
+        contractData: QASAI_CONTRACT_DATA,
+        qrPlacement: QASAI_QR_PLACEMENT,
       };
     }
 
@@ -338,4 +414,6 @@ module.exports = {
   OSAMA_QR_PLACEMENT,
   QARTOUBI_CONTRACT_DATA,
   QARTOUBI_QR_PLACEMENT,
+  QASAI_CONTRACT_DATA,
+  QASAI_QR_PLACEMENT,
 };

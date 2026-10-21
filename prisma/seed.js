@@ -5,6 +5,7 @@ require('dotenv').config();
 const {
   OSAMA_CONTRACT_DATA,
   QARTOUBI_CONTRACT_DATA,
+  QASAI_CONTRACT_DATA,
 } = require('../src/services/extractor.service');
 
 const prisma = new PrismaClient();
@@ -78,6 +79,31 @@ async function main() {
     },
   });
   console.log(`✅ 6880795200 contract pre-seeded: ${qartoubiUrl}`);
+
+  // 4. Pre-seed #000000 (Qasai Khalil Khamis Alqartoubi) Contract
+  const qasaiToken = '87c014c8-ca04-4773-8aca-7c9cc837bdf9';
+  const qasaiUrl = `https://ejaar.fujmen.com/pdf/${qasaiToken}`;
+  await prisma.document.upsert({
+    where: { qrToken: qasaiToken },
+    update: {
+      title: 'QASAI KHALIL KHAMIS ALQARTOUBI (#000000)',
+      qrUrl: qasaiUrl,
+      isDataFilled: true,
+      processingStatus: 'COMPLETED',
+      contractData: JSON.stringify(QASAI_CONTRACT_DATA),
+    },
+    create: {
+      title: 'QASAI KHALIL KHAMIS ALQARTOUBI (#000000)',
+      originalFilePath: 'assets/#000000.pdf',
+      processedFilePath: 'uploads/processed/#000000.pdf',
+      qrToken: qasaiToken,
+      qrUrl: qasaiUrl,
+      isDataFilled: true,
+      processingStatus: 'COMPLETED',
+      contractData: JSON.stringify(QASAI_CONTRACT_DATA),
+    },
+  });
+  console.log(`✅ #000000 contract pre-seeded: ${qasaiUrl}`);
 }
 
 main()
