@@ -1,5 +1,6 @@
 FROM node:20-alpine
-RUN apk add --no-cache openssl libcrypto3 libssl3
+RUN apk add --no-cache openssl libcrypto3 libssl3 python3 py3-pip
+RUN pip3 install --break-system-packages pymupdf Pillow
 WORKDIR /app
 COPY package*.json ./
 RUN npm install

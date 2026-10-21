@@ -25,10 +25,13 @@ async function generateQRCode(url, filename) {
 /**
  * Get QR position coordinates
  * position: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'custom'
- * customX, customY: used if position is 'custom'
+ * customX, customY: used if position is 'custom' (x = left in page coords, y = bottom-up in pdf-lib coords)
  */
 function getQRPosition(position, pageWidth, pageHeight, qrSize = 65, customX, customY) {
   const margin = 25;
+  const cx = (customX !== undefined && customX !== null && !Number.isNaN(Number(customX))) ? Number(customX) : null;
+  const cy = (customY !== undefined && customY !== null && !Number.isNaN(Number(customY))) ? Number(customY) : null;
+
   switch (position) {
     case 'top-left':
       return { x: margin, y: pageHeight - qrSize - margin };
@@ -39,7 +42,10 @@ function getQRPosition(position, pageWidth, pageHeight, qrSize = 65, customX, cu
     case 'bottom-right':
       return { x: pageWidth - qrSize - margin, y: margin };
     case 'custom':
-      return { x: parseFloat(customX) ?? (pageWidth - qrSize - margin), y: parseFloat(customY) ?? margin };
+      return {
+        x: (cx !== null) ? cx : (pageWidth - qrSize - margin),
+        y: (cy !== null) ? cy : margin,
+      };
     default:
       return { x: pageWidth - qrSize - margin, y: margin };
   }
@@ -47,13 +53,10 @@ function getQRPosition(position, pageWidth, pageHeight, qrSize = 65, customX, cu
 
 /**
  * Parse page selection string into array of 0-based indices
- * '1' => [0], 'first' => [0], 'all' => null (means all), '1,3,5' => [0,2,4]
  */
 function parsePageSelection(selection, totalPages) {
-  if (selection === 'all') return null; // null means all pages
+  if (selection === 'all') return null;
   if (!selection || selection === 'first' || selection === '1') return [0];
-
-  // comma-separated page numbers (1-based)
   return selection
     .split(',')
     .map((s) => parseInt(s.trim()) - 1)
@@ -81,27 +84,17 @@ async function embedQRInPDF(pdfPath, qrImagePath, options = {}) {
 
   const pages = pdfDoc.getPages();
   const selectedIndices = parsePageSelection(pageSelection, pages.length);
-
-  const targetPages = selectedIndices
-    ? selectedIndices.map((i) => pages[i]).filter(Boolean)
-    : pages;
+  const targetPages = selectedIndices ? selectedIndices.map((i) => pages[i]).filter(Boolean) : pages;
 
   for (const page of targetPages) {
     const { width, height } = page.getSize();
     const { x, y } = getQRPosition(position, width, height, qrSize, customX, customY);
-
-    page.drawImage(qrImage, {
-      x,
-      y,
-      width: qrSize,
-      height: qrSize,
-    });
+    page.drawImage(qrImage, { x, y, width: qrSize, height: qrSize });
   }
 
   const modifiedPdfBytes = await pdfDoc.save();
   const outPath = path.join(processedDir, outputFilename || `processed_${Date.now()}.pdf`);
   fs.writeFileSync(outPath, modifiedPdfBytes);
-
   return outPath;
 }
 

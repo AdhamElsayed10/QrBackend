@@ -1,13 +1,10 @@
-import sys
-import os
+import sys, os, json, math
 import pymupdf
-import json
 
 def main():
     if len(sys.argv) < 3:
-        print(json.dumps({"error": "Missing arguments. Usage: render_pdf.py <pdf_path> <output_dir>"}))
+        print(json.dumps({"error": "Missing arguments"}))
         sys.exit(1)
-
     pdf_path = sys.argv[1]
     out_dir = sys.argv[2]
     os.makedirs(out_dir, exist_ok=True)
@@ -23,45 +20,76 @@ def main():
         width = rect.width
         height = rect.height
 
-        # Render page 0 at 200 DPI
-        pix = page.get_pixmap(dpi=200)
+        dpi = 300
+        scale = dpi / 72.0
+        pix = page.get_pixmap(dpi=dpi)
         full_img_path = os.path.join(out_dir, "page_full.png")
         pix.save(full_img_path)
 
-        # Crop key sections for robust OCR:
-        # Section 1: Leasor details
-        # Section 2: Tenant details
-        # Section 3: Leased unit details
-        # Section 4: Contract details
-        from PIL import Image
-        img = Image.open(full_img_path)
-        img_w, img_h = img.size
+        # Extract text-layer spans (for PDFs that have text)
+        spans = []
+        try:
+            d = page.get_text("dict")
+            for block in d.get("blocks", []):
+                if block.get("type") != 0:
+                    continue
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        text = span.get("text", "")
+                        if not text:
+                            continue
+                        spans.append({
+                            "text": text,
+                            "bbox": span.get("bbox"),  # [x0,y0,x1,y1] page coords
+                            "font": span.get("font"),
+                        })
+        except Exception as e:
+            spans = []
+            print(json.dumps({"warning": f"span extraction failed: {e}"}), file=sys.stderr)
 
-        sections = {
-            "leasor": img.crop((0, int(0.14 * img_h), img_w, int(0.25 * img_h))),
-            "tenant": img.crop((0, int(0.24 * img_h), img_w, int(0.35 * img_h))),
-            "unit": img.crop((0, int(0.34 * img_h), img_w, int(0.50 * img_h))),
-            "contract": img.crop((0, int(0.49 * img_h), img_w, int(0.65 * img_h))),
-            "footer": img.crop((0, int(0.65 * img_h), img_w, int(0.95 * img_h))),
-        }
+        # Find MAKANI placeholder box (the empty box that should receive the QR)
+        makani_box = None
+        images = page.get_image_info(xrefs=True)
+        for info in images:
+            bbox = info["bbox"]
+            w = bbox[2] - bbox[0]
+            h = bbox[3] - bbox[1]
+            # The MAKANI box is roughly square ~50-75pt, on the right side
+            if 40 < w < 90 and 40 < h < 90 and bbox[0] > width * 0.5:
+                # prefer one near bottom-middle
+                if makani_box is None or bbox[1] > makani_box[1]:
+                    makani_box = {"bbox": list(bbox), "width": w, "height": h, "xref": info.get("xref")}
+                elif abs(bbox[1] - makani_box[1]) < 5 and bbox[2] > makani_box[2]:
+                    makani_box = {"bbox": list(bbox), "width": w, "height": h, "xref": info.get("xref")}
 
-        section_paths = {}
-        for name, crop_img in sections.items():
-            c_path = os.path.join(out_dir, f"section_{name}.png")
-            crop_img.save(c_path)
-            section_paths[name] = c_path
+        # Also check for empty rectangle drawings that might be the placeholder
+        if makani_box is None:
+            try:
+                for drawing in page.get_drawings():
+                    items = drawing.get("items", [])
+                    for item in items:
+                        if item[0] == "re":  # rectangle
+                            rectd = item[1]
+                            rw = rectd.x1 - rectd.x0
+                            rh = rectd.y1 - rectd.y0
+                            if 40 < rw < 90 and 40 < rh < 90 and rectd.x0 > width * 0.5:
+                                if makani_box is None or rectd.y1 > makani_box["bbox"][3]:
+                                    makani_box = {"bbox": [rectd.x0, rectd.y0, rectd.x1, rectd.y1], "width": rw, "height": rh}
+            except Exception:
+                pass
 
         info = {
             "success": True,
             "pageCount": len(doc),
             "width": width,
             "height": height,
-            "dpi": 200,
-            "imageWidth": img_w,
-            "imageHeight": img_h,
+            "dpi": dpi,
+            "scale": scale,
+            "imageWidth": pix.width,
+            "imageHeight": pix.height,
             "fullImagePath": full_img_path,
-            "sections": section_paths,
-            "text": page.get_text()
+            "spans": spans,
+            "makaniBox": makani_box,
         }
         print(json.dumps(info))
     except Exception as e:
@@ -70,4 +98,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
