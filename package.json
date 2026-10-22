@@ -21,6 +21,7 @@
     "form-data": "^4.0.5",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
+    "mupdf": "^1.28.1",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "prisma": "^5.10.0",

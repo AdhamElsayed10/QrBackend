@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { generateQRCode, embedQRInPDF } = require('../services/pdf.service');
-const { extractContractDataFromPDF } = require('../services/extractor.service');
+const { extractContractDataFromPDF, calculateFujairahQRPlacement } = require('../services/extractor.service');
 
 const prisma = new PrismaClient();
 
@@ -111,24 +111,17 @@ exports.uploadDocuments = async (req, res) => {
       // Generate QR code image pointing to the public contract page
       const qrImagePath = await generateQRCode(qrUrl, token);
 
-      // Select QR placement: bottom-right on first page only
+      // Select QR placement: accurately placed based on page dimensions
       let qrPlacement = extractionResult.qrPlacement;
-      if (!qrPlacement && isFujairahContract) {
+      if (!qrPlacement) {
         try {
           const { PDFDocument } = require('pdf-lib');
           const pdfDoc = await PDFDocument.load(fs.readFileSync(file.path));
           const { width, height } = pdfDoc.getPage(0).getSize();
-          if (Math.abs(width - 595.32) < 20 && Math.abs(height - 841.92) < 20) {
-            qrPlacement = { position: 'custom', customX: 476, customY: 201.5, qrSize: 65, pageSelection: 'first' };
-          } else {
-            qrPlacement = FUJAIRAH_QR_SETTINGS;
-          }
+          qrPlacement = calculateFujairahQRPlacement(width, height);
         } catch (_) {
           qrPlacement = FUJAIRAH_QR_SETTINGS;
         }
-      }
-      if (!qrPlacement) {
-        qrPlacement = GENERIC_QR_SETTINGS;
       }
 
       // Embed QR in PDF on first page only
@@ -137,13 +130,25 @@ exports.uploadDocuments = async (req, res) => {
         outputFilename: `processed_${token}.pdf`,
       });
 
-      // Update document with COMPLETED status
+      // Encode PDF as base64 for resilient, permanent storage across container restarts
+      let pdfBase64 = null;
+      try {
+        pdfBase64 = fs.readFileSync(processedPath).toString('base64');
+      } catch (_) {}
+
+      const mergedContractData = {
+        ...(contractData || {}),
+        ...(pdfBase64 ? { _pdfBase64: pdfBase64 } : {}),
+      };
+
+      // Update document with COMPLETED status and persisted PDF buffer
       const updatedDoc = await prisma.document.update({
         where: { id: doc.id },
         data: {
           processedFilePath: processedPath,
           qrImagePath,
           processingStatus: 'COMPLETED',
+          contractData: JSON.stringify(mergedContractData),
         },
       });
 

@@ -40,15 +40,31 @@ router.get('/:token/file', async (req, res) => {
     const doc = await findDocument(req, res);
     if (!doc) return;
 
+    const encodedTitle = encodeURIComponent(doc.title || 'Contract');
+
+    // 1. Try streaming from physical disk
     const filePath = doc.processedFilePath || doc.originalFilePath;
-    if (!filePath || !fs.existsSync(filePath)) {
-      return res.status(404).send('PDF file not found on disk');
+    if (filePath && fs.existsSync(filePath)) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${encodedTitle}.pdf"; filename*=UTF-8''${encodedTitle}.pdf`);
+      return fs.createReadStream(filePath).pipe(res);
     }
 
-    const encodedTitle = encodeURIComponent(doc.title);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${encodedTitle}.pdf"; filename*=UTF-8''${encodedTitle}.pdf`);
-    fs.createReadStream(filePath).pipe(res);
+    // 2. Resilient fallback: stream from persisted database base64 buffer
+    if (doc.contractData) {
+      try {
+        const parsed = JSON.parse(doc.contractData);
+        if (parsed._pdfBase64) {
+          const buf = Buffer.from(parsed._pdfBase64, 'base64');
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Length', buf.length);
+          res.setHeader('Content-Disposition', `inline; filename="${encodedTitle}.pdf"; filename*=UTF-8''${encodedTitle}.pdf`);
+          return res.send(buf);
+        }
+      } catch (_) {}
+    }
+
+    return res.status(404).send('PDF file not found on disk');
   } catch (err) {
     console.error('[Public Route] File stream error:', err);
     res.status(500).send('Server error');
