@@ -34,6 +34,7 @@ router.post(
 
 router.get('/', docController.getDocuments);
 router.get('/:id', docController.getDocument);
+router.put('/:id/data', docController.updateDocumentData);
 router.delete('/:id', docController.deleteDocument);
 router.get('/:id/download', docController.downloadDocument);
 

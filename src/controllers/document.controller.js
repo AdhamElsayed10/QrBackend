@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { generateQRCode, embedQRInPDF } = require('../services/pdf.service');
-const { extractContractDataFromPDF, calculateFujairahQRPlacement } = require('../services/extractor.service');
+const { extractContractDataFromPDF, calculateFujairahQRPlacement, maskPhone, maskId } = require('../services/extractor.service');
 
 const prisma = new PrismaClient();
 
@@ -203,23 +203,7 @@ exports.getDocuments = async (req, res) => {
     ]);
 
     res.json({
-      documents: documents.map((d) => {
-        let parsedData = null;
-        try {
-          if (d.contractData) parsedData = JSON.parse(d.contractData);
-        } catch (_) {}
-
-        return {
-          id: d.id,
-          title: d.title,
-          qrToken: d.qrToken,
-          qrUrl: d.qrUrl,
-          processingStatus: d.processingStatus,
-          isDataFilled: Boolean(d.isDataFilled),
-          contractData: parsedData,
-          createdAt: d.createdAt,
-        };
-      }),
+      documents: documents.map((d) => sanitizeDocument(d)),
       total,
     });
   } catch (err) {
@@ -238,24 +222,104 @@ exports.getDocument = async (req, res) => {
       return res.status(404).json({ error: 'Document not found' });
     }
 
-    let parsedData = null;
-    try {
-      if (doc.contractData) parsedData = JSON.parse(doc.contractData);
-    } catch (_) {}
-
-    res.json({
-      id: doc.id,
-      title: doc.title,
-      qrToken: doc.qrToken,
-      qrUrl: doc.qrUrl,
-      processingStatus: doc.processingStatus,
-      isDataFilled: Boolean(doc.isDataFilled),
-      contractData: parsedData,
-      createdAt: doc.createdAt,
-    });
+    res.json(sanitizeDocument(doc));
   } catch (err) {
     console.error('[Documents Controller] Error getting:', err);
     res.status(500).json({ error: 'Failed to get document' });
+  }
+};
+
+function parseStoredContractData(stored) {
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored);
+  } catch (_) {
+    return null;
+  }
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+// Internal keys (e.g. _pdfBase64) must survive manual edits — ignore client-sent ones.
+function mergeContractData(existing, incoming) {
+  const merged = { ...(existing || {}) };
+  for (const key of Object.keys(incoming || {})) {
+    const value = incoming[key];
+    if (key === '_pdfBase64') continue;
+    if (isPlainObject(value) && isPlainObject(merged[key])) {
+      merged[key] = mergeContractData(merged[key], value);
+    } else {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
+/**
+ * Re-derive masked contact values from raw ones after any manual edit
+ */
+function applyDisplayMasks(contractData) {
+  const masked = { ...contractData };
+  const owner = { ...(contractData.ownerDetails || {}) };
+  const tenant = { ...(contractData.tenantDetails || {}) };
+  owner.mobile = maskPhone(owner.mobileRaw || owner.mobile);
+  owner.idn = maskId(owner.idnRaw || owner.idn);
+  tenant.mobile = maskPhone(tenant.mobileRaw || tenant.mobile);
+  tenant.idn = maskId(tenant.idnRaw || tenant.idn);
+  masked.ownerDetails = owner;
+  masked.tenantDetails = tenant;
+  return masked;
+}
+
+/**
+ * Shape returned for document reads — single source so list/get/edit agree
+ */
+function sanitizeDocument(doc) {
+  const parsedData = parseStoredContractData(doc.contractData);
+  return {
+    id: doc.id,
+    title: doc.title,
+    qrToken: doc.qrToken,
+    qrUrl: doc.qrUrl,
+    processingStatus: doc.processingStatus,
+    isDataFilled: Boolean(doc.isDataFilled),
+    contractData: parsedData,
+    createdAt: doc.createdAt,
+  };
+}
+
+exports.updateDocumentData = async (req, res) => {
+  try {
+    const doc = await prisma.document.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!doc) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const incoming = req.body?.contractData;
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
+      return res.status(400).json({ error: 'A contractData object is required' });
+    }
+
+    const merged = mergeContractData(parseStoredContractData(doc.contractData), incoming);
+    const withDisplayMasks = applyDisplayMasks(merged);
+
+    const updatedDoc = await prisma.document.update({
+      where: { id: doc.id },
+      data: {
+        contractData: JSON.stringify({ ...withDisplayMasks, isDataFilled: true }),
+        isDataFilled: true,
+      },
+    });
+
+    res.json(sanitizeDocument(updatedDoc));
+  } catch (err) {
+    console.error('[Documents Controller] Error updating contract data:', err);
+    res.status(500).json({ error: 'Failed to update contract data' });
   }
 };
 
