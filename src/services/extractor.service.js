@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execFileSync } = require('child_process');
 const { PDFParse } = require('pdf-parse');
 let Tesseract = null;
 try { Tesseract = require('tesseract.js'); } catch (_) {}
