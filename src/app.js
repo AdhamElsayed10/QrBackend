@@ -7,10 +7,10 @@ const authRoutes = require('./routes/auth.routes');
 const documentRoutes = require('./routes/document.routes');
 const publicRoutes = require('./routes/public.routes');
 const settingsRoutes = require('./routes/settings.routes');
-// Start app
+
 const app = express();
 
-// CORS - allow multiple origins (comma-separated in env)
+// CORS - allow multiple origins 
 const allowedOrigins = (process.env.CORS_ORIGIN || 'https://eportal-fze.ae,https://www.eportal-fze.ae')
 .split(',')
 .map(s => s.trim());
