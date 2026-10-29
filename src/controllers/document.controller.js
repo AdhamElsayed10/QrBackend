@@ -420,3 +420,21 @@ exports.downloadDocument = async (req, res) => {
     res.status(500).json({ error: 'Failed to download document' });
   }
 };
+exports.downloadOriginalDocument = async (req, res) => {
+  try {
+    const doc = await prisma.document.findUnique({ where: { id: req.params.id } });
+    if (!doc || !doc.originalFilePath) {
+      return res.status(404).json({ error: 'Original document not found' });
+    }
+    if (!fs.existsSync(doc.originalFilePath)) {
+      return res.status(404).json({ error: 'File not found on disk' });
+    }
+    const encodedTitle = encodeURIComponent(doc.title);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodedTitle}.pdf"; filename*=UTF-8''${encodedTitle}.pdf`);
+    fs.createReadStream(doc.originalFilePath).pipe(res);
+  } catch (err) {
+    console.error('[Documents Controller] Error downloading original:', err);
+    res.status(500).json({ error: 'Failed to download original' });
+  }
+};

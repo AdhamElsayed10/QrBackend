@@ -37,5 +37,7 @@ router.get('/:id', docController.getDocument);
 router.put('/:id/data', docController.updateDocumentData);
 router.delete('/:id', docController.deleteDocument);
 router.get('/:id/download', docController.downloadDocument);
+router.get('/:id/original', docController.downloadOriginalDocument);
 
 module.exports = router;
+
