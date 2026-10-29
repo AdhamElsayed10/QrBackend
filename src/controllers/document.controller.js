@@ -75,6 +75,22 @@ exports.uploadDocuments = async (req, res) => {
 
   const baseUrl = getPublicBaseUrl(req);
   console.log('[Upload Controller] Resolved public QR baseUrl:', baseUrl);
+
+  // Check for client-supplied placement overrides in req.body
+  const clientPlacement = {};
+  if (req.body?.qrPosition) clientPlacement.position = String(req.body.qrPosition);
+  if (req.body?.customX !== undefined && req.body?.customX !== '') clientPlacement.customX = Number(req.body.customX);
+  if (req.body?.customY !== undefined && req.body?.customY !== '') clientPlacement.customY = Number(req.body.customY);
+  if (req.body?.qrSize !== undefined && req.body?.qrSize !== '') clientPlacement.qrSize = Number(req.body.qrSize);
+  if (req.body?.applyTo || req.body?.pageSelection) clientPlacement.pageSelection = String(req.body.applyTo || req.body.pageSelection);
+
+  let savedSettings = null;
+  if (Object.keys(clientPlacement).length === 0) {
+    try {
+      savedSettings = await prisma.qRSettings.findFirst();
+    } catch (_) {}
+  }
+
   const results = [];
 
   for (const file of files) {
@@ -111,9 +127,36 @@ exports.uploadDocuments = async (req, res) => {
       // Generate QR code image pointing to the public contract page
       const qrImagePath = await generateQRCode(qrUrl, token);
 
-      // Select QR placement: accurately placed based on page dimensions
-      let qrPlacement = extractionResult.qrPlacement;
-      if (!qrPlacement) {
+      // Select QR placement: client-specified override > saved settings in DB > contract extractor > default Fujairah
+      let qrPlacement = null;
+      if (Object.keys(clientPlacement).length > 0) {
+        qrPlacement = {
+          position: clientPlacement.position || 'custom',
+          customX: clientPlacement.customX !== undefined ? clientPlacement.customX : 464,
+          customY: clientPlacement.customY !== undefined ? clientPlacement.customY : 175,
+          qrSize: clientPlacement.qrSize !== undefined ? clientPlacement.qrSize : 65,
+          pageSelection: clientPlacement.pageSelection || 'first',
+        };
+      } else if (savedSettings && (savedSettings.customX !== 464 || savedSettings.customY !== 175 || savedSettings.qrSize !== 65 || savedSettings.applyTo !== 'first' || savedSettings.qrPosition !== 'custom')) {
+        // User explicitly customized default settings
+        qrPlacement = {
+          position: savedSettings.qrPosition || 'custom',
+          customX: savedSettings.customX,
+          customY: savedSettings.customY,
+          qrSize: savedSettings.qrSize,
+          pageSelection: savedSettings.applyTo || 'first',
+        };
+      } else if (extractionResult.qrPlacement) {
+        qrPlacement = extractionResult.qrPlacement;
+      } else if (savedSettings) {
+        qrPlacement = {
+          position: savedSettings.qrPosition || 'custom',
+          customX: savedSettings.customX,
+          customY: savedSettings.customY,
+          qrSize: savedSettings.qrSize,
+          pageSelection: savedSettings.applyTo || 'first',
+        };
+      } else {
         try {
           const { PDFDocument } = require('pdf-lib');
           const pdfDoc = await PDFDocument.load(fs.readFileSync(file.path));

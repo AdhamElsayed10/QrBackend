@@ -98,4 +98,4 @@ async function embedQRInPDF(pdfPath, qrImagePath, options = {}) {
   return outPath;
 }
 
-module.exports = { generateQRCode, embedQRInPDF };
+module.exports = { generateQRCode, embedQRInPDF, getQRPosition };
